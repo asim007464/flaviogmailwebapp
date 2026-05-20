@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>6.0 – E-Mail Versand</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-logo">6.0</span>
+        <div>
+          <h1>E-Mail Versand</h1>
+          <p>Excel hochladen · Vorschau · Versenden</p>
+        </div>
+      </div>
+      <div id="smtpStatus" class="status-pill" title="">SMTP prüfen…</div>
+    </header>
+
+    <div id="sendLogPanel" class="send-log-panel hidden">
+      <div class="send-log-header">
+        <strong>Versand-Log</strong>
+        <span id="sendLogSummary"></span>
+      </div>
+      <ul id="sendLog" class="send-log"></ul>
+    </div>
+
+    <main class="grid">
+      <section class="panel">
+        <h2>1. Empfänger (Excel)</h2>
+        <p class="hint">Datei mit Spalte <strong>email</strong> (oder E-Mail-Adressen in beliebigen Zellen).</p>
+        <p class="hint"><a href="/sample-recipients.xlsx" download>sample-recipients.xlsx</a> herunterladen (4 Test-E-Mails).</p>
+
+        <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Excel-Datei hochladen">
+          <input type="file" id="fileInput" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" tabindex="-1">
+          <span class="dropzone-icon">📄</span>
+          <span class="dropzone-text">Excel hier ablegen oder klicken</span>
+          <span class="dropzone-sub">.xlsx / .xls</span>
+        </div>
+
+        <div id="uploadMeta" class="upload-meta hidden"></div>
+
+        <div class="subject-row">
+          <label for="subject">Betreff</label>
+          <input type="text" id="subject" value="Mathe 2 - Verpasse nicht unsere Videos zu wichtigen Fallen und Tipps">
+        </div>
+
+        <div class="list-header">
+          <span id="emailCount">0 Empfänger</span>
+          <button type="button" id="clearBtn" class="btn-ghost hidden">Liste leeren</button>
+        </div>
+        <ul id="emailList" class="email-list"></ul>
+
+        <div class="test-send-row">
+          <label for="testEmail">Gmail-Test (nur Text, 1 Adresse)</label>
+          <div class="test-send-inputs">
+            <input type="email" id="testEmail" placeholder="deine@gmail.com">
+            <button type="button" id="testSendBtn" class="btn-ghost">Test senden</button>
+          </div>
+          <p id="testSendResult" class="hint hidden"></p>
+        </div>
+
+        <div class="actions">
+          <button type="button" id="sendBtn" class="btn-primary" disabled>
+            E-Mails senden
+          </button>
+        </div>
+
+        <div id="progressWrap" class="progress-wrap hidden">
+          <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+          <p id="progressText" class="progress-text"></p>
+        </div>
+        <div id="resultBox" class="result-box hidden"></div>
+      </section>
+
+      <section class="panel panel-preview">
+        <h2>2. Vorlage (Vorschau)</h2>
+        <p class="hint">So sehen Empfänger die E-Mail im Postfach.</p>
+        <iframe id="previewFrame" title="E-Mail Vorschau" src="/api/preview?v=2"></iframe>
+      </section>
+    </main>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
