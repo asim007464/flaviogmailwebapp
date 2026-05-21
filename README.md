@@ -1,116 +1,171 @@
-# flavioemail
+# 6.0 E-Mail Versand
 
-Send the **6.0 Mathe-2** marketing email as HTML so recipients see the full designed layout (not plain text).
+Web app to upload Excel recipients, preview the email, and send in batches (20 per hour).
 
-## Web app (Excel upload + preview + send)
+---
 
-1. Configure `.env` (SMTP settings).
-2. Start the server:
+## What to send your client (ZIP / folder)
+
+Include the **whole project folder**, but **do NOT include**:
+
+- `node_modules/` (too large — client installs it)
+- `.env` (passwords — client creates their own)
+
+**Do include:** `.env.example`, `package.json`, `src/`, `public/`, `sample-recipients.xlsx`, etc.
+
+---
+
+## Requirements (client PC)
+
+1. **Node.js 18 or newer** — download: https://nodejs.org/ (LTS version)
+2. **Internet** (for SMTP and `npm install`)
+3. Windows, Mac, or Linux
+
+Check Node is installed:
 
 ```bash
-npm start
+node -v
+npm -v
 ```
 
-3. Open **http://localhost:3000** in the browser.
+---
 
-Your client can:
-- Upload an Excel file (`.xlsx` / `.xls`) with an `email` column
-- Preview the HTML template on the right
-- Send to all recipients with a progress bar
+## Setup (first time only)
 
-Sample Excel (optional):
+### 1. Open the project folder
 
-```bash
-node scripts/create-sample-excel.js
-```
+Example: unzip to `C:\flavioemail` and open Terminal / PowerShell in that folder.
 
-Uses `sample-recipients.xlsx` in the project root.
-
-## Quick start (CLI)
-
-1. Install dependencies:
+### 2. Install dependencies
 
 ```bash
 npm install
 ```
 
-2. Copy environment file and add your SMTP credentials:
+This recreates `node_modules/` (needed after you deleted it).
+
+### 3. Create `.env` from the example
+
+**Windows (PowerShell or CMD):**
 
 ```bash
 copy .env.example .env
 ```
 
-Edit `.env` with your mail server (Gmail, Outlook, SendGrid SMTP, etc.).
-
-3. Preview the email in your browser:
+**Mac / Linux:**
 
 ```bash
-npm run preview
+cp .env.example .env
 ```
 
-Open `preview.html` in Chrome or Edge.
+### 4. Edit `.env` — fill in real values
 
-4. Send to someone:
+| Variable | Example / note |
+|----------|----------------|
+| `SMTP_HOST` | `smtp.hostinger.com` |
+| `SMTP_PORT` | `587` |
+| `SMTP_SECURE` | `false` |
+| `SMTP_USER` | `kontakt@six-point-o.ch` |
+| `SMTP_PASS` | mailbox password from Hostinger |
+| `FROM_NAME` | `6.0 · six-point-o.ch` |
+| `FROM_EMAIL` | `kontakt@six-point-o.ch` |
+| `REPLY_TO` | `kontakt@six-point-o.ch` |
+| `AUTH_USER` | login username for the web app |
+| `AUTH_PASSWORD` | login password for the web app |
+| `SESSION_SECRET` | any long random string |
+| `OFFER_UNTIL` | `23.5` |
+| `BATCH_SIZE` | `20` |
+| `BATCH_INTERVAL_MS` | `3600000` (1 hour) |
+| `SEND_DELAY_MS` | `3000` |
 
-```bash
-npm run send -- friend@example.com
-```
+Optional URLs (defaults are fine):
 
-Optional custom subject:
+- `CTA_URL`, `PRICING_URL`
 
-```bash
-npm run send -- friend@example.com "Noch nicht bereit für Mathe 2?"
-```
+---
 
-## Customize the template
-
-Edit `templates/mathe-2-pruefung.html`. Link placeholders:
-
-| Placeholder | Default |
-|-------------|---------|
-| `{{ctaUrl}}` | Free trial link |
-| `{{pricingUrl}}` | Pricing page |
-| `{{unsubscribeUrl}}` | Unsubscribe link |
-
-Set defaults in `.env` via `CTA_URL`, `PRICING_URL`, `UNSUBSCRIBE_URL`.
-
-## Hostinger setup (`kontakt@six-point-o.ch`)
-
-1. In **hPanel** → **Emails** → **Manage** → **Connect Apps & Devices**.
-2. Copy SMTP: host `smtp.hostinger.com`, port `587`, TLS.
-3. In `.env` set `SMTP_USER` and `SMTP_PASS` to your mailbox login (full email + password).
-4. Test:
+## Run the app (every time)
 
 ```bash
 npm start
 ```
 
-Open http://localhost:3000 — status should show **SMTP OK · kontakt@six-point-o.ch**.
+Then open in the browser:
 
-## Gmail setup (alternative)
+**http://localhost:3000**
 
-1. Enable 2-factor authentication on your Google account.
-2. Create an [App Password](https://myaccount.google.com/apppasswords).
-3. In `.env` use `smtp.gmail.com` and your Gmail app password.
+Log in with `AUTH_USER` / `AUTH_PASSWORD` from `.env`.
 
-## Logo
+---
 
-The template uses a small inline SVG logo. To use your PNG instead, replace the `<img>` in the header with your hosted URL or attach the image via nodemailer (CID).
+## How to use the app
 
-## Spam / Posteingang
+1. **Log in** at http://localhost:3000
+2. **Upload Excel** (`.xlsx` / `.xls`) with column **`email`**
+3. Check **preview** on the right
+4. Click **„Versand starten (20 pro Stunde)“**
+   - First **20** emails go out immediately
+   - Then **20 more every hour**
+5. Keep the terminal open (`npm start` must keep running)
 
-Personal Gmail for bulk marketing often lands in **Spam**. Improvements in this project:
+Sample file: `sample-recipients.xlsx` or download from the app.
 
-- List-Unsubscribe headers and plain-text version
-- No external Google Fonts in sent emails
-- Clear sender name matching 6.0
+---
 
-**Empfänger:** „Kein Spam“ / „Not spam“ markieren und `contactsixpointo@gmail.com` als Kontakt speichern.
+## Stop the server
 
-**Langfristig:** Google Workspace mit Domain `six-point-o.ch` (SPF/DKIM) statt `@gmail.com`.
+In the terminal: **Ctrl + C**
 
-## Email client notes
+---
 
-- Gmail and Apple Mail render this design well.
-- Outlook may simplify gradients and animations; that is normal for HTML email.
-- Keep total message size under ~100 KB if you add large inline images.
+## Send one test email (optional)
+
+```bash
+npm run send -- test@example.com
+```
+
+---
+
+## Excel format
+
+| email |
+|-------|
+| user1@example.com |
+| user2@example.com |
+
+Column name can be `email`, `E-Mail`, etc.
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `npm is not recognized` | Install Node.js from nodejs.org |
+| `SMTP fehlt` | Check `.env` and restart `npm start` |
+| Port 3000 in use | Close other `npm start` or kill the old process |
+| Emails in Spam | Check Spam folder; use business domain + SPF/DKIM in Hostinger |
+| Campaign stops | Computer must stay on; terminal must keep running |
+
+---
+
+## Vercel (live website) vs local PC
+
+- **Recommended for big lists (1000+ emails):** run on a **PC or server** with `npm start` (runs for days).
+- **Vercel:** needs `CAMPAIGN_DATA_DIR=/tmp/flavioemail-data` and redeploy; not ideal for very long campaigns.
+
+---
+
+## GitHub
+
+https://github.com/asim007464/flaviogmailwebapp
+
+Clone instead of ZIP:
+
+```bash
+git clone https://github.com/asim007464/flaviogmailwebapp.git
+cd flaviogmailwebapp
+npm install
+copy .env.example .env
+npm start
+```
