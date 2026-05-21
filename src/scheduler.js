@@ -6,13 +6,18 @@ import { sendOne, prepareSendContent, clearEmailCache, getSendDelayMs } from './
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Vercel/Lambda: do NOT use project "data/" — /var/task is read-only (ENOENT on mkdir).
-// Use CAMPAIGN_DATA_DIR=/tmp/flavioemail-data on live; localhost uses ./data automatically.
+// Vercel/Lambda: /var/task is read-only — never store queue in project "data/".
+// Best on live: CAMPAIGN_DATA_DIR=/tmp/flavioemail-data (also in vercel.json).
+
+const TMP_STORAGE = join(os.tmpdir(), 'flavioemail-data');
+let resolvedStorageDir = null;
 
 function isServerless() {
   const cwd = process.cwd();
   return Boolean(
-    process.env.VERCEL ||
+    process.env.VERCEL === '1' ||
+      process.env.VERCEL === 'true' ||
+      process.env.VERCEL ||
       process.env.AWS_LAMBDA_FUNCTION_NAME ||
       __dirname.includes('var/task') ||
       cwd.includes('var/task') ||
@@ -20,14 +25,45 @@ function isServerless() {
   );
 }
 
-function getDataDir() {
+function preferredDataDir() {
   if (process.env.CAMPAIGN_DATA_DIR) return process.env.CAMPAIGN_DATA_DIR;
-  if (isServerless()) return join(os.tmpdir(), 'flavioemail-data');
+  if (isServerless()) return TMP_STORAGE;
   return join(__dirname, '..', 'data');
+}
+
+export function getDataDir() {
+  return resolvedStorageDir ?? preferredDataDir();
 }
 
 function getQueueFile() {
   return join(getDataDir(), 'campaign.json');
+}
+
+async function ensureDataDir() {
+  if (resolvedStorageDir) {
+    await mkdir(resolvedStorageDir, { recursive: true });
+    return resolvedStorageDir;
+  }
+
+  const candidates = [
+    preferredDataDir(),
+    TMP_STORAGE,
+  ];
+
+  const unique = [...new Set(candidates)];
+  let lastError;
+
+  for (const dir of unique) {
+    try {
+      await mkdir(dir, { recursive: true });
+      resolvedStorageDir = dir;
+      return dir;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  throw lastError ?? new Error('Could not create campaign storage directory');
 }
 
 let timer = null;
@@ -39,10 +75,6 @@ export function getBatchSize() {
 
 export function getBatchIntervalMs() {
   return Number(process.env.BATCH_INTERVAL_MS ?? 60 * 60 * 1000);
-}
-
-async function ensureDataDir() {
-  await mkdir(getDataDir(), { recursive: true });
 }
 
 async function loadCampaign() {
