@@ -25,6 +25,7 @@ import {
   getCampaignStatus,
   cancelCampaign,
   resumeCampaignOnStartup,
+  processDueBatch,
   getBatchSize,
   getBatchIntervalMs,
 } from './scheduler.js';
@@ -68,6 +69,23 @@ app.get('/api/auth/me', (req, res) => {
   const user = getSessionUser(req);
   if (!user) return res.status(401).json({ ok: false });
   res.json({ ok: true, user });
+});
+
+/** Vercel Cron: sends next email batch when due (serverless has no background timers). */
+app.get('/api/campaign/cron', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret) {
+    const auth = req.headers.authorization;
+    if (auth !== `Bearer ${secret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  }
+  try {
+    const result = await processDueBatch();
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 app.use('/api', requireAuth);
@@ -181,10 +199,16 @@ app.post('/api/parse-excel', upload.single('file'), (req, res) => {
 });
 
 const port = Number(process.env.PORT ?? 3000);
-app.listen(port, async () => {
-  console.log(`6.0 Email Sender: http://localhost:${port}`);
-  console.log(`SMTP: ${process.env.SMTP_USER} @ ${process.env.SMTP_HOST}`);
-  console.log(`From: ${process.env.FROM_EMAIL}`);
-  console.log(`Batch: ${getBatchSize()} emails every ${getBatchIntervalMs() / 60000} min`);
-  await resumeCampaignOnStartup();
-});
+const isVercel = Boolean(process.env.VERCEL);
+
+if (!isVercel) {
+  app.listen(port, async () => {
+    console.log(`6.0 Email Sender: http://localhost:${port}`);
+    console.log(`SMTP: ${process.env.SMTP_USER} @ ${process.env.SMTP_HOST}`);
+    console.log(`From: ${process.env.FROM_EMAIL}`);
+    console.log(`Batch: ${getBatchSize()} emails every ${getBatchIntervalMs() / 60000} min`);
+    await resumeCampaignOnStartup();
+  });
+}
+
+export default app;

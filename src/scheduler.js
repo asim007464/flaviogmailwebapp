@@ -1,11 +1,28 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { sendOne, prepareSendContent, clearEmailCache, getSendDelayMs } from './mailer.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(__dirname, '..', 'data');
-const QUEUE_FILE = join(DATA_DIR, 'campaign.json');
+
+function isServerless() {
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.CAMPAIGN_DATA_DIR?.startsWith('/tmp')
+  );
+}
+
+function getDataDir() {
+  if (process.env.CAMPAIGN_DATA_DIR) return process.env.CAMPAIGN_DATA_DIR;
+  if (isServerless()) return join(os.tmpdir(), 'flavioemail-data');
+  return join(__dirname, '..', 'data');
+}
+
+function getQueueFile() {
+  return join(getDataDir(), 'campaign.json');
+}
 
 let timer = null;
 let runningBatch = false;
@@ -19,12 +36,12 @@ export function getBatchIntervalMs() {
 }
 
 async function ensureDataDir() {
-  await mkdir(DATA_DIR, { recursive: true });
+  await mkdir(getDataDir(), { recursive: true });
 }
 
 async function loadCampaign() {
   try {
-    const raw = await readFile(QUEUE_FILE, 'utf8');
+    const raw = await readFile(getQueueFile(), 'utf8');
     return JSON.parse(raw);
   } catch {
     return null;
@@ -33,7 +50,7 @@ async function loadCampaign() {
 
 async function saveCampaign(campaign) {
   await ensureDataDir();
-  await writeFile(QUEUE_FILE, JSON.stringify(campaign, null, 2), 'utf8');
+  await writeFile(getQueueFile(), JSON.stringify(campaign, null, 2), 'utf8');
 }
 
 export async function getCampaignStatus() {
@@ -43,6 +60,7 @@ export async function getCampaignStatus() {
       active: false,
       batchSize: getBatchSize(),
       batchIntervalMs: getBatchIntervalMs(),
+      storageDir: getDataDir(),
     };
   }
 
@@ -64,6 +82,7 @@ export async function getCampaignStatus() {
     runningBatch,
     recentSent: c.sent.slice(-5).map((s) => s.to),
     recentFailed: c.failed.slice(-5),
+    storageDir: getDataDir(),
   };
 }
 
@@ -74,6 +93,9 @@ function scheduleNextBatch(campaign) {
     return;
   }
 
+  // Vercel/serverless: no long-lived timers — use /api/campaign/cron instead
+  if (isServerless()) return;
+
   const delay = Math.max(0, new Date(campaign.nextBatchAt).getTime() - Date.now());
   timer = setTimeout(() => {
     runNextBatch().catch((e) => console.error('Campaign batch error:', e.message));
@@ -81,10 +103,10 @@ function scheduleNextBatch(campaign) {
 }
 
 async function runNextBatch() {
-  if (runningBatch) return;
+  if (runningBatch) return { skipped: true, reason: 'batch_already_running' };
   const campaign = await loadCampaign();
   if (!campaign || campaign.status !== 'running' || campaign.pending.length === 0) {
-    return;
+    return { skipped: true, reason: 'no_active_campaign' };
   }
 
   runningBatch = true;
@@ -102,7 +124,7 @@ async function runNextBatch() {
     campaign.lastError = e.message;
     await saveCampaign(campaign);
     runningBatch = false;
-    return;
+    throw e;
   }
 
   console.log(`Campaign: sending batch of ${batch.length} (${campaign.sent.length} already sent)`);
@@ -133,6 +155,35 @@ async function runNextBatch() {
   await saveCampaign(campaign);
   runningBatch = false;
   scheduleNextBatch(campaign);
+
+  return {
+    sent: batch.length,
+    pending: campaign.pending.length,
+    failed: campaign.failed.length,
+  };
+}
+
+/** Called by Vercel Cron every few minutes to send the next batch when due. */
+export async function processDueBatch() {
+  const campaign = await loadCampaign();
+  if (!campaign || campaign.status !== 'running' || campaign.pending.length === 0) {
+    return { processed: false, reason: 'nothing_due' };
+  }
+
+  const nextAt = campaign.nextBatchAt
+    ? new Date(campaign.nextBatchAt).getTime()
+    : 0;
+
+  if (nextAt > Date.now()) {
+    return {
+      processed: false,
+      reason: 'not_due_yet',
+      nextBatchAt: campaign.nextBatchAt,
+    };
+  }
+
+  const result = await runNextBatch();
+  return { processed: true, ...result };
 }
 
 export async function startCampaign(emails, subject) {
@@ -180,6 +231,11 @@ export async function cancelCampaign() {
 }
 
 export async function resumeCampaignOnStartup() {
+  if (isServerless()) {
+    await processDueBatch();
+    return;
+  }
+
   const campaign = await loadCampaign();
   if (!campaign || campaign.status !== 'running' || campaign.pending.length === 0) {
     return;

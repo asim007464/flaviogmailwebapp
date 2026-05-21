@@ -1,0 +1,14 @@
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "/src/server.js" }],
+  "functions": {
+    "src/server.js": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/campaign/cron",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}
