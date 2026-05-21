@@ -28,6 +28,7 @@ import {
   processDueBatch,
   getBatchSize,
   getBatchIntervalMs,
+  getDataDir,
 } from './scheduler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -104,6 +105,8 @@ app.get('/api/health', async (_req, res) => {
       sendDelayMs: getSendDelayMs(),
       batchSize: getBatchSize(),
       batchIntervalMs: getBatchIntervalMs(),
+      storageDir: getDataDir(),
+      version: '2026-05-21-tmp-storage',
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

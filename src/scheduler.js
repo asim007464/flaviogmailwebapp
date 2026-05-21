@@ -6,29 +6,18 @@ import { sendOne, prepareSendContent, clearEmailCache, getSendDelayMs } from './
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Vercel/Lambda: /var/task is read-only — never store queue in project "data/".
-// Best on live: CAMPAIGN_DATA_DIR=/tmp/flavioemail-data (also in vercel.json).
+// Never use project folder "data/" on Vercel (/var/task is read-only → ENOENT).
+// Default: OS temp dir. Local optional: USE_LOCAL_DATA=true → ./data
 
 const TMP_STORAGE = join(os.tmpdir(), 'flavioemail-data');
 let resolvedStorageDir = null;
 
-function isServerless() {
-  const cwd = process.cwd();
-  return Boolean(
-    process.env.VERCEL === '1' ||
-      process.env.VERCEL === 'true' ||
-      process.env.VERCEL ||
-      process.env.AWS_LAMBDA_FUNCTION_NAME ||
-      __dirname.includes('var/task') ||
-      cwd.includes('var/task') ||
-      __dirname.includes('\\var\\task')
-  );
-}
-
 function preferredDataDir() {
   if (process.env.CAMPAIGN_DATA_DIR) return process.env.CAMPAIGN_DATA_DIR;
-  if (isServerless()) return TMP_STORAGE;
-  return join(__dirname, '..', 'data');
+  if (process.env.USE_LOCAL_DATA === 'true') {
+    return join(__dirname, '..', 'data');
+  }
+  return TMP_STORAGE;
 }
 
 export function getDataDir() {
@@ -45,25 +34,10 @@ async function ensureDataDir() {
     return resolvedStorageDir;
   }
 
-  const candidates = [
-    preferredDataDir(),
-    TMP_STORAGE,
-  ];
-
-  const unique = [...new Set(candidates)];
-  let lastError;
-
-  for (const dir of unique) {
-    try {
-      await mkdir(dir, { recursive: true });
-      resolvedStorageDir = dir;
-      return dir;
-    } catch (e) {
-      lastError = e;
-    }
-  }
-
-  throw lastError ?? new Error('Could not create campaign storage directory');
+  const dir = preferredDataDir();
+  await mkdir(dir, { recursive: true });
+  resolvedStorageDir = dir;
+  return dir;
 }
 
 let timer = null;
