@@ -6,20 +6,34 @@ import { dirname, join } from 'path';
 import { parseEmailsFromExcel } from './parseExcel.js';
 import {
   buildPreviewHtml,
-  sendOne,
   sendTestMail,
-  prepareSendContent,
   clearEmailCache,
   getSendDelayMs,
   getDailyLimit,
   getTransporter,
 } from './mailer.js';
+import {
+  checkCredentials,
+  createSessionToken,
+  setSessionCookie,
+  clearSessionCookie,
+  getSessionUser,
+  requireAuth,
+} from './auth.js';
+import {
+  startCampaign,
+  getCampaignStatus,
+  cancelCampaign,
+  resumeCampaignOnStartup,
+  getBatchSize,
+  getBatchIntervalMs,
+} from './scheduler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(__dirname, '..', 'public');
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const name = file.originalname || '';
     const ok = /\.(xlsx|xls)$/i.test(name);
@@ -28,11 +42,35 @@ const upload = multer({
 });
 
 const app = express();
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '5mb' }));
 app.use(express.static(publicDir));
+
 app.get('/sample-recipients.xlsx', (_req, res) => {
   res.sendFile(join(__dirname, '..', 'sample-recipients.xlsx'));
 });
+
+app.post('/api/login', (req, res) => {
+  const username = String(req.body?.username ?? '').trim();
+  const password = String(req.body?.password ?? '');
+  if (!checkCredentials(username, password)) {
+    return res.status(401).json({ error: 'Benutzername oder Passwort falsch' });
+  }
+  setSessionCookie(res, createSessionToken(username));
+  res.json({ ok: true, user: username });
+});
+
+app.post('/api/logout', (_req, res) => {
+  clearSessionCookie(res);
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) return res.status(401).json({ ok: false });
+  res.json({ ok: true, user });
+});
+
+app.use('/api', requireAuth);
 
 app.get('/api/health', async (_req, res) => {
   try {
@@ -45,6 +83,8 @@ app.get('/api/health', async (_req, res) => {
       smtpUser: process.env.SMTP_USER,
       dailyLimit: getDailyLimit(),
       sendDelayMs: getSendDelayMs(),
+      batchSize: getBatchSize(),
+      batchIntervalMs: getBatchIntervalMs(),
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -55,6 +95,43 @@ app.get('/api/preview', (_req, res) => {
   try {
     const html = buildPreviewHtml();
     res.type('html; charset=utf-8').send(html);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/campaign/status', async (_req, res) => {
+  try {
+    res.json(await getCampaignStatus());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/campaign/start', async (req, res) => {
+  const { emails, subject } = req.body ?? {};
+  const defaultSubject =
+    'Mathe 2 - Verpasse nicht unsere Videos zu wichtigen Fallen und Tipps';
+  const mailSubject =
+    typeof subject === 'string' && subject.trim() ? subject.trim() : defaultSubject;
+
+  if (!Array.isArray(emails) || emails.length === 0) {
+    return res.status(400).json({ error: 'Keine Empfänger' });
+  }
+
+  try {
+    getTransporter();
+    const status = await startCampaign(emails, mailSubject);
+    res.json({ ok: true, ...status });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/campaign/cancel', async (_req, res) => {
+  try {
+    const result = await cancelCampaign();
+    res.json({ ok: true, ...result });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -79,7 +156,7 @@ app.post('/api/test-send', async (req, res) => {
       ok: true,
       to: email,
       messageId,
-      hint: 'Prüfe Posteingang UND Spam. Suche: from:kontakt@six-point-o.ch',
+      hint: 'Prüfe Posteingang UND Spam.',
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -95,91 +172,19 @@ app.post('/api/parse-excel', upload.single('file'), (req, res) => {
     res.json({
       ...result,
       fileName: req.file.originalname,
-      dailyLimit: getDailyLimit(),
+      batchSize: getBatchSize(),
+      batchIntervalMs: getBatchIntervalMs(),
     });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 });
 
-app.post('/api/send', async (req, res) => {
-  const { emails, subject } = req.body ?? {};
-  const defaultSubject =
-    'Mathe 2 - Verpasse nicht unsere Videos zu wichtigen Fallen und Tipps';
-  const mailSubject =
-    typeof subject === 'string' && subject.trim() ? subject.trim() : defaultSubject;
-
-  if (!Array.isArray(emails) || emails.length === 0) {
-    return res.status(400).json({ error: 'No recipients provided' });
-  }
-
-  const limit = getDailyLimit();
-  if (emails.length > limit) {
-    return res.status(400).json({
-      error: `Too many recipients (${emails.length}). Limit is ${limit} per run/day (see DAILY_SEND_LIMIT in .env).`,
-    });
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders?.();
-
-  const sendEvent = (data) => {
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
-  };
-
-  const delay = getSendDelayMs();
-  let sent = 0;
-  let failed = 0;
-  const errors = [];
-
-  try {
-    getTransporter();
-  } catch (e) {
-    sendEvent({ type: 'error', message: e.message });
-    return res.end();
-  }
-
-  const uniqueEmails = [...new Set(
-    emails.map((e) => String(e).trim().toLowerCase()).filter((e) => e.includes('@'))
-  )];
-
-  sendEvent({ type: 'start', total: uniqueEmails.length, delayMs: delay });
-
-  clearEmailCache();
-  let content;
-  try {
-    content = await prepareSendContent();
-  } catch (e) {
-    sendEvent({ type: 'error', message: 'E-Mail Inhalt: ' + e.message });
-    return res.end();
-  }
-
-  for (let i = 0; i < uniqueEmails.length; i++) {
-    const to = uniqueEmails[i];
-    try {
-      const messageId = await sendOne(to, mailSubject, content);
-      sent++;
-      sendEvent({ type: 'progress', index: i + 1, total: uniqueEmails.length, to, status: 'sent', messageId });
-    } catch (e) {
-      failed++;
-      errors.push({ to, error: e.message });
-      sendEvent({ type: 'progress', index: i + 1, total: uniqueEmails.length, to, status: 'failed', error: e.message });
-    }
-
-    if (i < uniqueEmails.length - 1) {
-      await new Promise((r) => setTimeout(r, delay));
-    }
-  }
-
-  sendEvent({ type: 'done', sent, failed, errors });
-  res.end();
-});
-
 const port = Number(process.env.PORT ?? 3000);
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`6.0 Email Sender: http://localhost:${port}`);
   console.log(`SMTP: ${process.env.SMTP_USER} @ ${process.env.SMTP_HOST}`);
   console.log(`From: ${process.env.FROM_EMAIL}`);
+  console.log(`Batch: ${getBatchSize()} emails every ${getBatchIntervalMs() / 60000} min`);
+  await resumeCampaignOnStartup();
 });

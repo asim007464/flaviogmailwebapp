@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>6.0 – Anmelden</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="login-page">
+  <div class="login-card">
+    <span class="brand-logo">6.0</span>
+    <h1>E-Mail Versand</h1>
+    <p class="hint">Bitte anmelden, um das Panel zu öffnen.</p>
+    <form id="loginForm">
+      <label for="username">Benutzername</label>
+      <input type="text" id="username" name="username" autocomplete="username" required>
+      <label for="password">Passwort</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+      <p id="loginError" class="login-error hidden"></p>
+      <button type="submit" class="btn-primary">Anmelden</button>
+    </form>
+  </div>
+  <script>
+    (async () => {
+      try {
+        const r = await fetch('/api/auth/me', { credentials: 'include' });
+        if (r.ok) location.href = '/';
+      } catch { /* stay on login */ }
+    })();
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById('loginError');
+      errEl.classList.add('hidden');
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          username: document.getElementById('username').value.trim(),
+          password: document.getElementById('password').value,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        errEl.textContent = data.error || 'Anmeldung fehlgeschlagen';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      location.href = '/';
+    });
+  </script>
+</body>
+</html>

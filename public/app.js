@@ -18,53 +18,142 @@ const testEmailInput = document.getElementById('testEmail');
 const testSendBtn = document.getElementById('testSendBtn');
 const testSendResult = document.getElementById('testSendResult');
 const previewText = document.getElementById('previewText');
+const logoutBtn = document.getElementById('logoutBtn');
+const campaignPanel = document.getElementById('campaignPanel');
+const campaignInfo = document.getElementById('campaignInfo');
+const cancelCampaignBtn = document.getElementById('cancelCampaignBtn');
 
 let emails = [];
-let dailyLimit = 500;
+let batchSize = 20;
+let batchIntervalMs = 3600000;
 let sending = false;
 let uploading = false;
 let smtpFrom = '';
+let campaignPollTimer = null;
+
+async function api(url, options = {}) {
+  const res = await fetch(url, { credentials: 'include', ...options });
+  if (res.status === 401) {
+    location.href = '/login.html';
+    throw new Error('Nicht angemeldet');
+  }
+  return res;
+}
+
+async function ensureAuth() {
+  const res = await fetch('/api/auth/me', { credentials: 'include' });
+  if (!res.ok) {
+    location.href = '/login.html';
+    return false;
+  }
+  return true;
+}
 
 async function checkHealth() {
   try {
-    const res = await fetch('/api/health');
+    const res = await api('/api/health');
     const data = await res.json();
     if (data.ok) {
       smtpFrom = data.from;
       smtpStatus.textContent = `SMTP OK · ${data.from}`;
       smtpStatus.title = `${data.smtpUser} @ ${data.smtpHost}`;
       smtpStatus.classList.remove('error', 'sending');
-      dailyLimit = data.dailyLimit;
+      batchSize = data.batchSize ?? 20;
+      batchIntervalMs = data.batchIntervalMs ?? 3600000;
     } else {
       throw new Error(data.error || 'SMTP not configured');
     }
   } catch (e) {
+    if (e.message === 'Nicht angemeldet') return;
     smtpStatus.textContent = 'SMTP fehlt';
     smtpStatus.title = e.message || '.env prüfen';
     smtpStatus.classList.add('error');
   }
 }
 
+function formatDuration(ms) {
+  if (ms <= 0) return 'gleich';
+  const min = Math.ceil(ms / 60000);
+  if (min < 60) return `${min} Min.`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h} Std. ${m} Min.` : `${h} Std.`;
+}
+
+function updateCampaignUI(status) {
+  if (!campaignPanel || !campaignInfo) return;
+
+  if (!status.active && status.status !== 'completed') {
+    campaignPanel.classList.add('hidden');
+    cancelCampaignBtn?.classList.add('hidden');
+    return;
+  }
+
+  campaignPanel.classList.remove('hidden');
+  const total = status.total ?? 0;
+  const done = (status.sent ?? 0) + (status.failed ?? 0);
+  const hoursLeft = status.pending
+    ? Math.ceil(status.pending / (status.batchSize || batchSize))
+    : 0;
+
+  let info = `${done} / ${total} verarbeitet · ${status.sent ?? 0} gesendet`;
+  if (status.failed) info += ` · ${status.failed} Fehler`;
+
+  if (status.active) {
+    const nextMs = status.nextBatchAt
+      ? new Date(status.nextBatchAt).getTime() - Date.now()
+      : 0;
+    info += `<br>Nächste ${status.batchSize || batchSize} E-Mails in <strong>${formatDuration(nextMs)}</strong>`;
+    info += `<br><em>Server muss laufen</em> — ca. ${hoursLeft} Stunde(n) für die restlichen Batches.`;
+    cancelCampaignBtn?.classList.remove('hidden');
+  } else if (status.status === 'completed') {
+    info += '<br><strong>Kampagne abgeschlossen.</strong>';
+    cancelCampaignBtn?.classList.add('hidden');
+  }
+
+  campaignInfo.innerHTML = info;
+}
+
+async function pollCampaignStatus() {
+  try {
+    const res = await api('/api/campaign/status');
+    const status = await res.json();
+    updateCampaignUI(status);
+    if (status.active) {
+      sendBtn.disabled = true;
+      sending = true;
+    } else if (!uploading && emails.length > 0) {
+      sending = false;
+      sendBtn.disabled = false;
+    }
+    return status;
+  } catch {
+    return null;
+  }
+}
+
+function startCampaignPolling() {
+  if (campaignPollTimer) clearInterval(campaignPollTimer);
+  pollCampaignStatus();
+  campaignPollTimer = setInterval(pollCampaignStatus, 15000);
+}
+
 function renderList() {
   if (emails.length === 0) {
     emailList.innerHTML = '<li class="empty">Noch keine E-Mails geladen</li>';
-    sendBtn.disabled = true;
+    if (!sending) sendBtn.disabled = true;
     clearBtn.classList.add('hidden');
     emailCount.textContent = '0 Empfänger';
     return;
   }
 
-  emailList.innerHTML = emails
-    .map((e) => `<li>${escapeHtml(e)}</li>`)
-    .join('');
-  emailCount.textContent = `${emails.length} Empfänger`;
-  sendBtn.disabled = sending || emails.length === 0;
+  emailList.innerHTML = emails.map((e) => `<li>${escapeHtml(e)}</li>`).join('');
+  const batches = Math.ceil(emails.length / batchSize);
+  const hours = Math.max(0, batches - 1);
+  emailCount.textContent =
+    `${emails.length} Empfänger · ${batches} Batch(es) à ${batchSize} · ca. ${hours} Std.`;
+  if (!sending) sendBtn.disabled = emails.length === 0;
   clearBtn.classList.remove('hidden');
-
-  if (emails.length > dailyLimit) {
-    emailCount.textContent += ` (Limit: ${dailyLimit}/Tag)`;
-    sendBtn.disabled = true;
-  }
 }
 
 function escapeHtml(s) {
@@ -84,30 +173,6 @@ function appendLog(message, type = 'info') {
   li.textContent = message;
   sendLog.appendChild(li);
   sendLog.scrollTop = sendLog.scrollHeight;
-}
-
-function parseSseChunk(buffer) {
-  const events = [];
-  const parts = buffer.split('\n\n');
-  const rest = parts.pop() ?? '';
-
-  for (const part of parts) {
-    const lines = part.split('\n');
-    for (const line of lines) {
-      if (line.startsWith('data:')) {
-        const json = line.slice(5).trim();
-        if (json) {
-          try {
-            events.push(JSON.parse(json));
-          } catch {
-            /* ignore partial JSON */
-          }
-        }
-      }
-    }
-  }
-
-  return { events, rest };
 }
 
 function isExcelFile(file) {
@@ -134,12 +199,13 @@ async function handleFile(file) {
   resultBox.classList.add('hidden');
 
   try {
-    const res = await fetch('/api/parse-excel', { method: 'POST', body: form });
+    const res = await api('/api/parse-excel', { method: 'POST', body: form });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Upload fehlgeschlagen');
 
     emails = data.emails;
-    dailyLimit = data.dailyLimit ?? dailyLimit;
+    batchSize = data.batchSize ?? batchSize;
+    batchIntervalMs = data.batchIntervalMs ?? batchIntervalMs;
 
     uploadMeta.textContent =
       `${data.fileName}: ${data.emails.length} E-Mail(s)` +
@@ -204,124 +270,76 @@ sendBtn.addEventListener('click', async () => {
   if (!emails.length || sending) return;
 
   const subject = subjectInput.value.trim();
-  const etaSec = Math.ceil((emails.length - 1) * 3);
+  const batches = Math.ceil(emails.length / batchSize);
+  const hours = Math.max(0, batches - 1);
+
   const confirmed = confirm(
-    `${emails.length} E-Mail(s) senden?\n\nBetreff: ${subject}\n\n` +
-      `Ca. ${etaSec > 0 ? etaSec + ' Sekunden' : 'sofort'} (3s Pause zwischen Mails).\n` +
-      `Fenster offen lassen bis „Fertig“ erscheint.`
+    `${emails.length} Empfänger — geplanter Versand:\n\n` +
+      `• Jetzt: erste ${batchSize} E-Mails\n` +
+      `• Danach: alle ${Math.round(batchIntervalMs / 60000)} Min. weitere ${batchSize}\n` +
+      `• Dauer ca. ${hours} Stunde(n) für alle Batches\n\n` +
+      `Betreff: ${subject}\n\n` +
+      `Der Server muss die ganze Zeit laufen. Starten?`
   );
   if (!confirmed) return;
 
   sending = true;
   sendBtn.disabled = true;
-  smtpStatus.textContent = 'Sende…';
-  smtpStatus.classList.add('sending');
-  smtpStatus.title = smtpFrom;
-
   sendLogPanel.classList.remove('hidden');
   clearSendLog();
-  appendLog(`Start · ${emails.length} Empfänger · ${smtpFrom}`, 'info');
-
+  appendLog(`Kampagne startet · ${emails.length} Empfänger`, 'info');
   progressWrap.classList.remove('hidden');
   resultBox.classList.add('hidden');
-  progressFill.style.width = '0%';
-  progressText.textContent = 'Verbindung…';
+  progressFill.style.width = '5%';
+  progressText.textContent = 'Starte erste 20…';
 
   try {
-    const res = await fetch('/api/send', {
+    const res = await api('/api/campaign/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ emails, subject }),
     });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Start fehlgeschlagen');
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || res.statusText);
-    }
+    appendLog(`Erste Batch gestartet · ${data.sent ?? 0} gesendet`, 'ok');
+    resultBox.classList.remove('hidden');
+    resultBox.className = 'result-box success';
+    resultBox.innerHTML =
+      `<strong>Kampagne läuft</strong><br>` +
+      `${data.sent ?? 0} gesendet, ${data.failed ?? 0} Fehler in der ersten Runde.<br>` +
+      `${data.pending ?? 0} warten auf die nächsten Stunden-Batches.`;
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const { events, rest } = parseSseChunk(buffer);
-      buffer = rest;
-      for (const ev of events) handleSendEvent(ev);
-    }
-
-    if (buffer.trim()) {
-      const { events } = parseSseChunk(buffer + '\n\n');
-      for (const ev of events) handleSendEvent(ev);
-    }
+    progressFill.style.width = '15%';
+    progressText.textContent = 'Kampagne aktiv — Status wird aktualisiert…';
+    startCampaignPolling();
   } catch (e) {
     appendLog('Fehler: ' + e.message, 'fail');
     resultBox.classList.remove('hidden');
     resultBox.className = 'result-box partial';
     resultBox.textContent = 'Fehler: ' + e.message;
-  } finally {
     sending = false;
-    smtpStatus.textContent = 'SMTP OK';
-    smtpStatus.classList.remove('sending');
-    smtpStatus.title = smtpFrom;
     renderList();
   }
 });
 
-function handleSendEvent(ev) {
-  if (ev.type === 'error') {
-    appendLog(ev.message, 'fail');
-    resultBox.classList.remove('hidden');
-    resultBox.className = 'result-box partial';
-    resultBox.textContent = ev.message;
-    return;
+cancelCampaignBtn?.addEventListener('click', async () => {
+  if (!confirm('Laufende Kampagne wirklich abbrechen?')) return;
+  try {
+    await api('/api/campaign/cancel', { method: 'POST' });
+    sending = false;
+    await pollCampaignStatus();
+    renderList();
+    appendLog('Kampagne abgebrochen', 'info');
+  } catch (e) {
+    alert(e.message);
   }
+});
 
-  if (ev.type === 'start') {
-    sendLogSummary.textContent = `0 / ${ev.total}`;
-    progressText.textContent = `Versand läuft (${Math.round(ev.delayMs / 1000)}s Pause zwischen E-Mails)`;
-    appendLog(`Pause: ${ev.delayMs}ms zwischen Sends`, 'info');
-  }
-
-  if (ev.type === 'progress') {
-    const pct = Math.round((ev.index / ev.total) * 100);
-    progressFill.style.width = pct + '%';
-    progressText.textContent = `${ev.index} von ${ev.total} (${pct}%)`;
-    sendLogSummary.textContent = `${ev.index} / ${ev.total}`;
-
-    if (ev.status === 'sent') {
-      appendLog(`✓ ${ev.to}`, 'ok');
-    } else {
-      appendLog(`✗ ${ev.to} — ${ev.error || 'Fehler'}`, 'fail');
-    }
-  }
-
-  if (ev.type === 'done') {
-    progressFill.style.width = '100%';
-    sendLogSummary.textContent = `Fertig · ${ev.sent} OK · ${ev.failed} Fehler`;
-    appendLog(`Fertig: ${ev.sent} gesendet, ${ev.failed} fehlgeschlagen`, ev.failed ? 'fail' : 'ok');
-
-    resultBox.classList.remove('hidden');
-    resultBox.className = ev.failed ? 'result-box partial' : 'result-box success';
-    const gmailHint =
-      `<br><br><strong>Wichtig (Gmail):</strong> „OK“ heisst nur: Hostinger hat die Mail angenommen — nicht dass sie im Posteingang ist.<br>` +
-      `• In <strong>jedem</strong> Gmail-Konto: Spam + „Alle E-Mails“ prüfen<br>` +
-      `• Suche: <code>from:kontakt@six-point-o.ch</code><br>` +
-      `• Hostinger hPanel → E-Mails → <strong>SPF + DKIM</strong> aktivieren<br>` +
-      `• Nicht 7 Test-Gmails hintereinander — Gmail filtert das als Werbung`;
-
-    resultBox.innerHTML =
-      `<strong>Fertig</strong><br>An Hostinger übergeben: ${ev.sent}<br>Fehlgeschlagen: ${ev.failed}` +
-      (ev.failed ? '' : gmailHint) +
-      (ev.failed
-        ? `<br><br><em>Fehler:</em> SMTP-Passwort oder Server prüfen (.env + npm start).`
-        : '');
-
-    progressText.textContent = 'Abgeschlossen.';
-  }
-}
+logoutBtn?.addEventListener('click', async () => {
+  await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+  location.href = '/login.html';
+});
 
 testSendBtn?.addEventListener('click', async () => {
   const email = testEmailInput?.value?.trim();
@@ -334,15 +352,14 @@ testSendBtn?.addEventListener('click', async () => {
   testSendResult.classList.remove('hidden');
   testSendResult.textContent = 'Sende Test…';
   try {
-    const res = await fetch('/api/test-send', {
+    const res = await api('/api/test-send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Test fehlgeschlagen');
-    testSendResult.textContent =
-      `Test gesendet an ${data.to}. Prüfe Posteingang UND Spam. Suche: from:kontakt@six-point-o.ch`;
+    testSendResult.textContent = `Test gesendet an ${data.to}.`;
   } catch (e) {
     testSendResult.textContent = 'Fehler: ' + e.message;
   } finally {
@@ -353,7 +370,7 @@ testSendBtn?.addEventListener('click', async () => {
 async function loadPreview() {
   if (!previewText) return;
   try {
-    const res = await fetch('/api/preview');
+    const res = await api('/api/preview');
     if (!res.ok) throw new Error('Vorschau konnte nicht geladen werden');
     previewText.innerHTML = await res.text();
   } catch (e) {
@@ -362,6 +379,11 @@ async function loadPreview() {
   }
 }
 
-checkHealth();
-loadPreview();
-renderList();
+(async function init() {
+  if (!(await ensureAuth())) return;
+  await checkHealth();
+  await loadPreview();
+  const status = await pollCampaignStatus();
+  if (status?.active) startCampaignPolling();
+  renderList();
+})();

@@ -17,8 +17,17 @@
           <p>Excel hochladen · Vorschau · Versenden</p>
         </div>
       </div>
-      <div id="smtpStatus" class="status-pill" title="">SMTP prüfen…</div>
+      <div class="topbar-actions">
+        <div id="smtpStatus" class="status-pill" title="">SMTP prüfen…</div>
+        <button type="button" id="logoutBtn" class="btn-ghost btn-sm">Abmelden</button>
+      </div>
     </header>
+
+    <div id="campaignPanel" class="campaign-panel hidden">
+      <strong>Geplanter Versand</strong>
+      <p id="campaignInfo" class="campaign-info"></p>
+      <button type="button" id="cancelCampaignBtn" class="btn-ghost btn-sm hidden">Kampagne abbrechen</button>
+    </div>
 
     <div id="sendLogPanel" class="send-log-panel hidden">
       <div class="send-log-header">
@@ -31,8 +40,9 @@
     <main class="grid">
       <section class="panel">
         <h2>1. Empfänger (Excel)</h2>
-        <p class="hint">Datei mit Spalte <strong>email</strong> (oder E-Mail-Adressen in beliebigen Zellen).</p>
-        <p class="hint"><a href="/sample-recipients.xlsx" download>sample-recipients.xlsx</a> herunterladen (4 Test-E-Mails).</p>
+        <p class="hint">Datei mit Spalte <strong>email</strong> (auch 1000+ Adressen).</p>
+        <p class="hint"><strong>20 E-Mails sofort</strong>, danach alle <strong>1 Stunde</strong> weitere 20.</p>
+        <p class="hint"><a href="/sample-recipients.xlsx" download>sample-recipients.xlsx</a> herunterladen.</p>
 
         <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Excel-Datei hochladen">
           <input type="file" id="fileInput" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" tabindex="-1">
@@ -65,7 +75,7 @@
 
         <div class="actions">
           <button type="button" id="sendBtn" class="btn-primary" disabled>
-            E-Mails senden
+            Versand starten (20 pro Stunde)
           </button>
         </div>
 
@@ -78,7 +88,7 @@
 
       <section class="panel panel-preview">
         <h2>2. E-Mail (Vorschau)</h2>
-        <p class="hint">Text mit klickbaren Links (blau unterstrichen, wie in Gmail).</p>
+        <p class="hint">Text mit klickbaren Links. Zeilenumbrüche = <strong>Soft Return</strong> (<code>&lt;br&gt;</code>), nicht <code>&lt;p&gt;</code> — besser für Outlook.</p>
         <div id="previewText" class="text-preview email-preview" aria-label="E-Mail Vorschau">Lade Vorschau…</div>
       </section>
     </main>

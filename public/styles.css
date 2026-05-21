@@ -405,3 +405,85 @@ body {
 }
 
 .hidden { display: none !important; }
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-sm {
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+.campaign-panel {
+  background: #fff8e6;
+  border: 1px solid #f0d78c;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.campaign-panel strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.campaign-info {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #5a4a20;
+  margin-bottom: 10px;
+}
+
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.login-card {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #ebf2ee;
+  padding: 36px 32px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(31, 168, 106, 0.08);
+}
+
+.login-card h1 {
+  font-size: 20px;
+  margin: 12px 0 8px;
+}
+
+.login-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.login-card label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7a82;
+  margin-top: 8px;
+}
+
+.login-card input {
+  padding: 12px 14px;
+  border: 1px solid #cde8d6;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.login-error {
+  color: #b42318;
+  font-size: 13px;
+  margin-top: 4px;
+}
