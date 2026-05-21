@@ -6,21 +6,30 @@ import { sendOne, prepareSendContent, clearEmailCache, getSendDelayMs } from './
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Never use project folder "data/" on Vercel (/var/task is read-only → ENOENT).
-// Default: OS temp dir. Local optional: USE_LOCAL_DATA=true → ./data
+// Vercel/Lambda: /var/task is read-only — NEVER mkdir /var/task/data (ENOENT).
+// Live must use /tmp (set CAMPAIGN_DATA_DIR in Vercel). USE_LOCAL_DATA only on your PC.
 
-const TMP_STORAGE = join(os.tmpdir(), 'flavioemail-data');
+const MODULE_PATH = __dirname.replace(/\\/g, '/');
+const ON_VERCEL_RUNTIME = MODULE_PATH.includes('/var/task');
+
+const TMP_STORAGE = ON_VERCEL_RUNTIME
+  ? '/tmp/flavioemail-data'
+  : join(os.tmpdir(), 'flavioemail-data');
+
 let resolvedStorageDir = null;
 
 function isServerless() {
   return Boolean(
     process.env.VERCEL ||
       process.env.AWS_LAMBDA_FUNCTION_NAME ||
-      __dirname.replace(/\\/g, '/').includes('/var/task')
+      ON_VERCEL_RUNTIME
   );
 }
 
 function preferredDataDir() {
+  if (ON_VERCEL_RUNTIME) {
+    return process.env.CAMPAIGN_DATA_DIR || '/tmp/flavioemail-data';
+  }
   if (process.env.CAMPAIGN_DATA_DIR) return process.env.CAMPAIGN_DATA_DIR;
   if (process.env.USE_LOCAL_DATA === 'true') {
     return join(__dirname, '..', 'data');

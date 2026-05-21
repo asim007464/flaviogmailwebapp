@@ -106,7 +106,8 @@ app.get('/api/health', async (_req, res) => {
       batchSize: getBatchSize(),
       batchIntervalMs: getBatchIntervalMs(),
       storageDir: getDataDir(),
-      version: '2026-05-21-tmp-storage',
+      version: '2026-05-22-vercel-fix-v2',
+      onVercel: Boolean(process.env.VERCEL),
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -141,12 +142,26 @@ app.post('/api/campaign/start', async (req, res) => {
     return res.status(400).json({ error: 'Keine Empfänger' });
   }
 
+  if (process.env.USE_LOCAL_DATA === 'true' && process.env.VERCEL) {
+    return res.status(400).json({
+      error:
+        'USE_LOCAL_DATA must be OFF on Vercel. Remove it from Environment Variables. Use CAMPAIGN_DATA_DIR=/tmp/flavioemail-data only.',
+    });
+  }
+
   try {
     getTransporter();
     const status = await startCampaign(emails, mailSubject);
     res.json({ ok: true, ...status });
   } catch (e) {
-    res.status(400).json({ error: e.message });
+    const msg = e.message ?? String(e);
+    if (msg.includes('/var/task/data')) {
+      return res.status(500).json({
+        error:
+          'Old deployment or USE_LOCAL_DATA on Vercel. Redeploy from GitHub, remove USE_LOCAL_DATA, set CAMPAIGN_DATA_DIR=/tmp/flavioemail-data',
+      });
+    }
+    res.status(400).json({ error: msg });
   }
 });
 
