@@ -12,6 +12,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const TMP_STORAGE = join(os.tmpdir(), 'flavioemail-data');
 let resolvedStorageDir = null;
 
+function isServerless() {
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      __dirname.replace(/\\/g, '/').includes('/var/task')
+  );
+}
+
 function preferredDataDir() {
   if (process.env.CAMPAIGN_DATA_DIR) return process.env.CAMPAIGN_DATA_DIR;
   if (process.env.USE_LOCAL_DATA === 'true') {
