@@ -398,10 +398,6 @@ body {
   text-decoration: underline;
 }
 
-.email-preview p {
-  margin: 0 0 1em;
-}
-
 @media (max-width: 620px) {
   .text-preview {
     max-height: 520px;

@@ -41,34 +41,30 @@ function emailUrls() {
 }
 
 /** Plain-text fallback (URLs visible if HTML is off). */
+/** Extra blank line after each paragraph (Shift+Enter style spacing). */
+const PARAGRAPH_GAP_TEXT = '\n\n\n';
+const PARAGRAPH_GAP_HTML = '<br><br><br>';
+
 export function getEmailText() {
   const { pricing, cta, offerUntil } = emailUrls();
 
   return [
     'Hey,',
-    '',
     'Wir kennen das Gefühl: Man nimmt sich vor, früh anzufangen, und plötzlich steht die Prüfung vor der Tür.',
-    '',
     'Genau dann hilft dir unser Schnell-Kurs, in wenigen Stunden fit für die Prüfung zu werden.',
-    '',
     'Unser Kurs wurde von Studierenden erstellt, die das Assessment mit Bestnoten bestanden haben, nicht von Professoren, die vergessen haben, wie sich Prüfungsstress anfühlt. Wir zeigen dir, wie du die wichtigsten Fallen umgehst und das Wesentliche, das wirklich drankommt, schnell löst.',
-    '',
-    'Jetzt Mathe 2 – Tipps & Tricks freischalten, zum reduzierten Preis',
-    pricing,
-    '',
+    'Jetzt Mathe 2 – Tipps & Tricks freischalten, zum reduzierten Preis\n' + pricing,
     'Kein Risiko. Kurz & übersichtlich. Nur der kürzeste Weg durch deine Prüfung.',
-    '',
-    'Erstmal kostenlos ausprobieren?',
-    cta,
-    '',
+    'Erstmal kostenlos ausprobieren?\n' + cta,
     `Das Angebot gilt nur noch bis zum ${offerUntil}.`,
-    '',
-    'Viel Erfolg – du schaffst das.',
-    'Dein Team von 6.0',
-  ].join('\n');
+    'Viel Erfolg – du schaffst das.\nDein Team von 6.0',
+  ].join(PARAGRAPH_GAP_TEXT);
 }
 
-/** Simple HTML: text + blue underlined links (like Gmail). */
+/**
+ * Simple HTML with &lt;br&gt; line breaks (soft return), not &lt;p&gt; blocks.
+ * Outlook and other clients handle &lt;br&gt; more reliably than extra paragraphs.
+ */
 export function getEmailHtml() {
   const { pricing, cta, offerUntil } = emailUrls();
   const pricingLink = link(
@@ -77,17 +73,19 @@ export function getEmailHtml() {
   );
   const ctaLink = link(cta, 'Erstmal kostenlos ausprobieren?');
 
-  return `<div style="font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#222">
-<p>Hey,</p>
-<p>Wir kennen das Gefühl: Man nimmt sich vor, früh anzufangen, und plötzlich steht die Prüfung vor der Tür.</p>
-<p>Genau dann hilft dir unser Schnell-Kurs, in wenigen Stunden fit für die Prüfung zu werden.</p>
-<p>Unser Kurs wurde von Studierenden erstellt, die das Assessment mit Bestnoten bestanden haben, nicht von Professoren, die vergessen haben, wie sich Prüfungsstress anfühlt. Wir zeigen dir, wie du die wichtigsten Fallen umgehst und das Wesentliche, das wirklich drankommt, schnell löst.</p>
-<p>${pricingLink}</p>
-<p>Kein Risiko. Kurz & übersichtlich. Nur der kürzeste Weg durch deine Prüfung.</p>
-<p>${ctaLink}</p>
-<p>Das Angebot gilt nur noch bis zum ${offerUntil}.</p>
-<p>Viel Erfolg – du schaffst das.<br>Dein Team von 6.0</p>
-</div>`;
+  const lines = [
+    'Hey,',
+    'Wir kennen das Gefühl: Man nimmt sich vor, früh anzufangen, und plötzlich steht die Prüfung vor der Tür.',
+    'Genau dann hilft dir unser Schnell-Kurs, in wenigen Stunden fit für die Prüfung zu werden.',
+    'Unser Kurs wurde von Studierenden erstellt, die das Assessment mit Bestnoten bestanden haben, nicht von Professoren, die vergessen haben, wie sich Prüfungsstress anfühlt. Wir zeigen dir, wie du die wichtigsten Fallen umgehst und das Wesentliche, das wirklich drankommt, schnell löst.',
+    pricingLink,
+    'Kein Risiko. Kurz & übersichtlich. Nur der kürzeste Weg durch deine Prüfung.',
+    ctaLink,
+    `Das Angebot gilt nur noch bis zum ${offerUntil}.`,
+    'Viel Erfolg – du schaffst das.<br>Dein Team von 6.0',
+  ];
+
+  return `<div style="font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#222">${lines.join(PARAGRAPH_GAP_HTML)}</div>`;
 }
 
 export function getEmailContent() {
@@ -118,8 +116,6 @@ export async function prepareSendContent() {
 export function clearEmailCache() {
   cachedContent = null;
 }
-
-clearEmailCache();
 
 export async function sendTestMail(to) {
   const fromName = process.env.FROM_NAME ?? '6.0 · six-point-o.ch';
