@@ -3,7 +3,8 @@ import { sendOne } from './mailer.js';
 
 const to = process.argv[2];
 const subject =
-  process.argv[3] ?? '6.0 – Rette deine Mathe-2-Prüfung';
+  process.argv[3] ??
+    'Mathe 2 - Verpasse nicht unsere Videos zu wichtigen Fallen und Tipps';
 
 if (!to) {
   console.error('Usage: npm run send -- <recipient@email.com> ["Optional subject"]');

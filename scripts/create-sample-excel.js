@@ -14,6 +14,7 @@ const ws = XLSX.utils.aoa_to_sheet([
   ['asimsajjad928@gmail.com', 'Asim'],
   ['bushraakmal464143@gmail.com', 'Bushra'],
   ['haris464143@gmail.com', 'Haris'],
+  ['fabio.bertschi@uzh.ch', 'Fabio UZH'],
 ]);
 const wb = XLSX.utils.book_new();
 XLSX.utils.book_append_sheet(wb, ws, 'Recipients');

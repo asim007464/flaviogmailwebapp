@@ -378,17 +378,33 @@ body {
   color: #7a4518;
 }
 
-.panel-preview iframe {
+.text-preview {
   width: 100%;
-  height: 620px;
+  min-height: 420px;
+  max-height: 620px;
+  overflow: auto;
+  margin: 0;
+  padding: 20px;
   border: 1px solid #ebf2ee;
   border-radius: 12px;
   background: #fff;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #222;
+}
+
+.email-preview a {
+  color: #1a73e8;
+  text-decoration: underline;
+}
+
+.email-preview p {
+  margin: 0 0 1em;
 }
 
 @media (max-width: 620px) {
-  .panel-preview iframe {
-    height: 520px;
+  .text-preview {
+    max-height: 520px;
   }
 }
 

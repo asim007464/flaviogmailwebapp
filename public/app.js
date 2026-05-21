@@ -17,6 +17,7 @@ const sendLogSummary = document.getElementById('sendLogSummary');
 const testEmailInput = document.getElementById('testEmail');
 const testSendBtn = document.getElementById('testSendBtn');
 const testSendResult = document.getElementById('testSendResult');
+const previewText = document.getElementById('previewText');
 
 let emails = [];
 let dailyLimit = 500;
@@ -349,5 +350,18 @@ testSendBtn?.addEventListener('click', async () => {
   }
 });
 
+async function loadPreview() {
+  if (!previewText) return;
+  try {
+    const res = await fetch('/api/preview');
+    if (!res.ok) throw new Error('Vorschau konnte nicht geladen werden');
+    previewText.innerHTML = await res.text();
+  } catch (e) {
+    previewText.innerHTML = '';
+    previewText.textContent = 'Fehler: ' + e.message;
+  }
+}
+
 checkHealth();
+loadPreview();
 renderList();

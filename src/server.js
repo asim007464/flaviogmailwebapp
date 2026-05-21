@@ -8,7 +8,7 @@ import {
   buildPreviewHtml,
   sendOne,
   sendTestMail,
-  prepareSendHtml,
+  prepareSendContent,
   clearEmailCache,
   getSendDelayMs,
   getDailyLimit,
@@ -51,10 +51,10 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
-app.get('/api/preview', async (_req, res) => {
+app.get('/api/preview', (_req, res) => {
   try {
-    const html = await buildPreviewHtml();
-    res.type('html').send(html);
+    const html = buildPreviewHtml();
+    res.type('html; charset=utf-8').send(html);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -104,7 +104,8 @@ app.post('/api/parse-excel', upload.single('file'), (req, res) => {
 
 app.post('/api/send', async (req, res) => {
   const { emails, subject } = req.body ?? {};
-  const defaultSubject = '6.0 – Rette deine Mathe-2-Prüfung';
+  const defaultSubject =
+    'Mathe 2 - Verpasse nicht unsere Videos zu wichtigen Fallen und Tipps';
   const mailSubject =
     typeof subject === 'string' && subject.trim() ? subject.trim() : defaultSubject;
 
@@ -147,18 +148,18 @@ app.post('/api/send', async (req, res) => {
   sendEvent({ type: 'start', total: uniqueEmails.length, delayMs: delay });
 
   clearEmailCache();
-  let html;
+  let content;
   try {
-    html = await prepareSendHtml();
+    content = await prepareSendContent();
   } catch (e) {
-    sendEvent({ type: 'error', message: 'E-Mail Vorlage: ' + e.message });
+    sendEvent({ type: 'error', message: 'E-Mail Inhalt: ' + e.message });
     return res.end();
   }
 
   for (let i = 0; i < uniqueEmails.length; i++) {
     const to = uniqueEmails[i];
     try {
-      const messageId = await sendOne(to, mailSubject, html);
+      const messageId = await sendOne(to, mailSubject, content);
       sent++;
       sendEvent({ type: 'progress', index: i + 1, total: uniqueEmails.length, to, status: 'sent', messageId });
     } catch (e) {
