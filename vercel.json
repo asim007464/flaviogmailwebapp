@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CAMPAIGN_DATA_DIR": "/tmp/flavioemail-data"
+  },
   "rewrites": [{ "source": "/(.*)", "destination": "/src/server.js" }],
   "functions": {
     "src/server.js": {

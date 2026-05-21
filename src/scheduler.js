@@ -7,10 +7,13 @@ import { sendOne, prepareSendContent, clearEmailCache, getSendDelayMs } from './
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function isServerless() {
+  const cwd = process.cwd();
   return Boolean(
     process.env.VERCEL ||
       process.env.AWS_LAMBDA_FUNCTION_NAME ||
-      process.env.CAMPAIGN_DATA_DIR?.startsWith('/tmp')
+      __dirname.includes('var/task') ||
+      cwd.includes('var/task') ||
+      __dirname.includes('\\var\\task')
   );
 }
 
