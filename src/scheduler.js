@@ -6,6 +6,9 @@ import { sendOne, prepareSendContent, clearEmailCache, getSendDelayMs } from './
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Vercel/Lambda: do NOT use project "data/" — /var/task is read-only (ENOENT on mkdir).
+// Use CAMPAIGN_DATA_DIR=/tmp/flavioemail-data on live; localhost uses ./data automatically.
+
 function isServerless() {
   const cwd = process.cwd();
   return Boolean(

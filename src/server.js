@@ -71,6 +71,7 @@ app.get('/api/auth/me', (req, res) => {
   res.json({ ok: true, user });
 });
 
+// Live (Vercel): campaign queue file must live in /tmp — see CAMPAIGN_DATA_DIR in vercel.json.
 /** Vercel Cron: sends next email batch when due (serverless has no background timers). */
 app.get('/api/campaign/cron', async (req, res) => {
   const secret = process.env.CRON_SECRET;
