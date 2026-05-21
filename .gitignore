@@ -1,6 +1,7 @@
 node_modules/
 .env
 data/
+data.zip
 preview.html
 preview.txt
 public/logo-email.png
